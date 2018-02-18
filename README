@@ -1,0 +1,8 @@
+Frames v2
+
+Backlit picture frames connected wirelessly using Blynk.
+An iOS app is used to control the light patterns.
+The light patterns are constructed by 3 moving sine waves
+of color (red, green, blue). The app controls the speed,
+direction, and wavelength of each wave. This results in a
+variety of colors when the waves intersect each other.

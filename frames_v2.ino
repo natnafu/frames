@@ -1,20 +1,20 @@
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoOTA.h>
 #include <BlynkSimpleEsp8266.h>
+#include <DNSServer.h>
 #include <ESP8266mDNS.h>
+#include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <math.h>
 #include <Ticker.h>
 #include <SPI.h>
 #include <WiFiUdp.h>
+#include <WiFiManager.h>
 
+// add to .gitignore, holds BLYNK token.
 #include "creds.h"
 
-// creds.h holds wifi creds and BLYNK token, add to gitignore
-const char* ssid = STASSID;
-const char* password = STAPSK;
-
-// ESP32 things
+// ESP things
 #define PIN D2
 #define NUM_PIXELS 200
 
@@ -34,11 +34,7 @@ struct color {
   int waveln;
   int phase;
   int pwr;
-};
-
-color red = {0.04096, 4,  0, 0};
-color grn = {0.0512,  9,  0, 0};
-color blu = {0.0512,  1,  0, 0};
+} red, grn, blu;
 
 // sets red speed
 BLYNK_WRITE(V0) {
@@ -102,19 +98,17 @@ byte cos8(int x) {
 void setup() {
   Serial.begin(115200);
 
+  Serial.println("Booting...");
+
   // LEDS
   pixels.begin();
   pixels.show();
 
+  // WiFi
+  WiFiManager wifiManager;
+  wifiManager.autoConnect("Frame-AP");
+
   // OTA things
-  Serial.println("Booting");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
-  }
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -122,7 +116,6 @@ void setup() {
     } else { // U_FS
       type = "filesystem";
     }
-
     // NOTE: if updating FS this would be the place to unmount FS using FS.end()
     Serial.println("Start updating " + type);
   });
@@ -152,8 +145,22 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // Blynk things
-  Blynk.begin(TOKEN, STASSID, STAPSK);
+  String wifi_ssid = WiFi.SSID();
+  String wifi_pass = WiFi.psk();
+  char blynk_ssid[wifi_ssid.length()];
+  char blynk_pass[wifi_pass.length()];
+  wifi_ssid.toCharArray(blynk_ssid, wifi_ssid.length());
+  wifi_pass.toCharArray(blynk_pass, wifi_pass.length());
+  Blynk.begin(TOKEN, blynk_ssid, blynk_pass);
+
+  // Sync settings to Blynk App except power so it turns on black.
+  Blynk.syncAll();
+  red.pwr = 0;
+  grn.pwr = 0;
+  blu.pwr = 0;
+
   blinker.attach_ms(1, ms_step);
+  Serial.println("Starting main loop...");
 }
 
 void loop() {

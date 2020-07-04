@@ -99,6 +99,8 @@ void setup() {
   Serial.begin(115200);
 
   Serial.println("Booting...");
+  uint32_t ESP_ID = ESP.getChipId();
+  Serial.print("ESP8266 ID:"); Serial.println(ESP_ID);
 
   // LEDS
   pixels.begin();
@@ -107,7 +109,22 @@ void setup() {
   // WiFi
   startup_pixel(0,0,255); // blue
   WiFiManager wifiManager;
-  wifiManager.autoConnect("Frame-AP");
+  //wifiManager.resetSettings();
+  wifiManager.setTimeout(180);  // 3min timeout
+
+  // Create unique SSID
+  char buf[16];
+  sprintf(buf, "Frame-AP-%u", ESP_ID);
+
+  // Connect to WiFi, create AP if fails, reset if timeout
+  if(!wifiManager.autoConnect(buf)) {
+    Serial.println("failed to connect and hit timeout");
+    delay(3000);
+    //reset and try again, or maybe put it to deep sleep
+    startup_pixel(255,255,255); // white
+    ESP.reset();
+    while(1);
+  }
 
   // OTA things
   startup_pixel(0,255,0); // green

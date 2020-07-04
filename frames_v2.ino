@@ -19,7 +19,9 @@
 
 // Blynk things
 #define BLYNK_PRINT Serial
-
+#ifndef TOKEN
+  #define TOKEN "token-here-if-no-creds.h-file"
+#endif
 // LED things
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
@@ -82,16 +84,6 @@ BLYNK_WRITE(V10) {
   brightness = param[0].asDouble();
 }
 
-void blynk_sync_waves() {
-  Blynk.syncVirtual(V0);
-  Blynk.syncVirtual(V1);
-  Blynk.syncVirtual(V2);
-  Blynk.syncVirtual(V3);
-  Blynk.syncVirtual(V4);
-  Blynk.syncVirtual(V5);
-  Blynk.syncVirtual(V10);
-}
-
 // 8bit sine wave approx
 byte cos8(int x) {
   return (cos((x/127.5) * M_PI) * 127.5) + 127.5;
@@ -150,11 +142,12 @@ void setup() {
     }
   });
   ArduinoOTA.begin();
-  Serial.println("Ready");
+  Serial.println("OTA Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
   // Blynk things
+  Serial.println("Connecting to Blynk...");
   startup_pixel(255,0,0); // red
   String wifi_ssid = WiFi.SSID();
   String wifi_pass = WiFi.psk();
@@ -165,7 +158,13 @@ void setup() {
   Blynk.begin(TOKEN, blynk_ssid, blynk_pass);
 
   // Sync wave settings from Blynk App
-  blynk_sync_waves();
+  Blynk.syncVirtual(V0);
+  Blynk.syncVirtual(V1);
+  Blynk.syncVirtual(V2);
+  Blynk.syncVirtual(V3);
+  Blynk.syncVirtual(V4);
+  Blynk.syncVirtual(V5);
+  Blynk.syncVirtual(V10);
 
   Serial.println("Starting main loop...");
   startup_pixel(0,0,0);

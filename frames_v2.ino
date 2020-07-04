@@ -82,9 +82,25 @@ BLYNK_WRITE(V10) {
   brightness = param[0].asDouble();
 }
 
+void blynk_sync_waves() {
+  Blynk.syncVirtual(V0);
+  Blynk.syncVirtual(V1);
+  Blynk.syncVirtual(V2);
+  Blynk.syncVirtual(V3);
+  Blynk.syncVirtual(V4);
+  Blynk.syncVirtual(V5);
+  Blynk.syncVirtual(V10);
+}
+
 // 8bit sine wave approx
 byte cos8(int x) {
   return (cos((x/127.5) * M_PI) * 127.5) + 127.5;
+}
+
+// Sets the first to a color, used for startup status
+void startup_pixel(byte r, byte g, byte b) {
+  pixels.setPixelColor(0, pixels.Color(r,g,b));
+  pixels.show();
 }
 
 void setup() {
@@ -97,10 +113,12 @@ void setup() {
   pixels.show();
 
   // WiFi
+  startup_pixel(0,0,255); // blue
   WiFiManager wifiManager;
   wifiManager.autoConnect("Frame-AP");
 
   // OTA things
+  startup_pixel(0,255,0); // green
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -137,6 +155,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   // Blynk things
+  startup_pixel(255,0,0); // red
   String wifi_ssid = WiFi.SSID();
   String wifi_pass = WiFi.psk();
   char blynk_ssid[wifi_ssid.length()];
@@ -145,13 +164,11 @@ void setup() {
   wifi_pass.toCharArray(blynk_pass, wifi_pass.length());
   Blynk.begin(TOKEN, blynk_ssid, blynk_pass);
 
-  // Sync settings to Blynk App except power so it turns on black.
-  Blynk.syncAll();
-  red.pwr = 0;
-  grn.pwr = 0;
-  blu.pwr = 0;
+  // Sync wave settings from Blynk App
+  blynk_sync_waves();
 
   Serial.println("Starting main loop...");
+  startup_pixel(0,0,0);
 }
 
 void loop() {

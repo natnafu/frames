@@ -6,7 +6,6 @@
 #include <ESP8266WebServer.h>
 #include <ESP8266WiFi.h>
 #include <math.h>
-#include <Ticker.h>
 #include <SPI.h>
 #include <WiFiUdp.h>
 #include <WiFiManager.h>
@@ -24,10 +23,8 @@
 // LED things
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-Ticker blinker;
-volatile uint32_t timer = 0;
-
-double brightness = 1.0;
+double brightness = 1.0;  // global brightness off all colors
+uint32_t sync_offset;     // used to sync multiple frames
 
 struct color {
   double speed;
@@ -77,17 +74,12 @@ BLYNK_WRITE(V8) {
 
 // Sync devices
 BLYNK_WRITE(V9) {
-  if (param[0].asInt()) timer = 0;
+  if (param[0].asInt()) sync_offset = millis();
 }
 
 // Set brightness
 BLYNK_WRITE(V10) {
   brightness = param[0].asDouble();
-}
-
-// Increases timer by 1ms (assuming 1ms ticker)
-void ms_step() {
-  timer++;
 }
 
 // 8bit sine wave approx
@@ -159,13 +151,12 @@ void setup() {
   grn.pwr = 0;
   blu.pwr = 0;
 
-  blinker.attach_ms(1, ms_step);
   Serial.println("Starting main loop...");
 }
 
 void loop() {
   ArduinoOTA.handle();
-  uint32_t t = timer;
+  uint32_t t = millis() - sync_offset;
   for (int i = 0; i < NUM_PIXELS; i++) {
     uint32_t r = brightness * (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
     uint32_t g = brightness * (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));

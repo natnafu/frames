@@ -20,7 +20,7 @@
 // Blynk things
 #define BLYNK_PRINT Serial
 #ifndef TOKEN
-  #define TOKEN "token-here-if-no-creds.h-file"
+  #error "define TOKEN in creds.h"
 #endif
 // LED things
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIN, NEO_GRB + NEO_KHZ800);

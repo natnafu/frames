@@ -1,13 +1,7 @@
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoOTA.h>
 #include <BlynkSimpleEsp8266.h>
-#include <DNSServer.h>
-#include <ESP8266mDNS.h>
-#include <ESP8266WebServer.h>
-#include <ESP8266WiFi.h>
 #include <math.h>
-#include <SPI.h>
-#include <WiFiUdp.h>
 #include <WiFiManager.h>
 
 // add to .gitignore, holds BLYNK token.

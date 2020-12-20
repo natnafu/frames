@@ -22,6 +22,9 @@ Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIN, NEO_GRB + NEO_KHZ8
 double brightness = 1.0;  // global brightness off all colors
 uint32_t sync_offset;     // used to sync multiple frames
 
+#define TIMEOUT_MS  (4 * 60 * 60 * 1000)  // 4 hours in ms
+unsigned long timer_last_change;
+
 struct color {
   double speed;
   int waveln;
@@ -32,52 +35,64 @@ struct color {
 // sets red speed
 BLYNK_WRITE(V0) {
   red.speed = (param[0].asDouble() * 256.0) / 500.0;
+  timer_last_change = millis();
 }
 // sets green speed
 BLYNK_WRITE(V1) {
   grn.speed = (param[0].asDouble() * 256.0) / 500.0;
+  timer_last_change = millis();
 }
 // sets blue speed
 BLYNK_WRITE(V2) {
   blu.speed = (param[0].asDouble() * 256.0) / 500.0;
+  timer_last_change = millis();
 }
 
 // sets red wave length
 BLYNK_WRITE(V3) {
   red.waveln = 256.0 / param[0].asInt();
+  timer_last_change = millis();
 }
 // sets green frequency
 BLYNK_WRITE(V4) {
   grn.waveln = 256.0 / param[0].asInt();
+  timer_last_change = millis();
 }
 // sets blue frequency
 BLYNK_WRITE(V5) {
   blu.waveln = 256.0 / param[0].asInt();
+  timer_last_change = millis();
 }
 
 // sets red power
 BLYNK_WRITE(V6) {
   red.pwr = param[0].asInt();
+  timer_last_change = millis();
 }
 // sets green power
 BLYNK_WRITE(V7) {
   grn.pwr = param[0].asInt();
+  timer_last_change = millis();
 }
 // sets blue power
 BLYNK_WRITE(V8) {
   blu.pwr = param[0].asInt();
+  timer_last_change = millis();
 }
 
 // Sync devices
 BLYNK_WRITE(V9) {
   if (param[0].asInt()) sync_offset = millis();
+  timer_last_change = millis();
 }
 
 // Set brightness
 BLYNK_WRITE(V10) {
   brightness = param[0].asDouble();
+  timer_last_change = millis();
 }
 
+// Syncs all settings with app
 void blynk_sync_all() {
   Blynk.syncVirtual(V0);
   Blynk.syncVirtual(V1);
@@ -90,6 +105,16 @@ void blynk_sync_all() {
   Blynk.syncVirtual(V8);
   Blynk.syncVirtual(V9);
   Blynk.syncVirtual(V10);
+}
+
+// Turns of power to all colors
+void blynk_pwr_off() {
+  Blynk.virtualWrite(V6,0);
+  Blynk.virtualWrite(V7,0);
+  Blynk.virtualWrite(V8,0);
+  red.pwr = 0;
+  grn.pwr = 0;
+  blu.pwr = 0;
 }
 
 // 8bit sine wave approx
@@ -184,6 +209,7 @@ void setup() {
 
   // Sync wave settings from Blynk App
   blynk_sync_all();
+  timer_last_change = millis();
 
   Serial.println("Starting main loop...");
   startup_pixel(0,0,0);
@@ -200,4 +226,9 @@ void loop() {
   }
   pixels.show();
   Blynk.run();
+
+  if (millis() - timer_last_change > TIMEOUT_MS) {
+    blynk_pwr_off();
+    timer_last_change = millis();
+  }
 }

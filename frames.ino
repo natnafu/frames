@@ -8,7 +8,6 @@
 #include "creds.h"
 
 // ESP things
-#define PIN D2
 #define NUM_PIXELS 200
 
 // Blynk things
@@ -17,7 +16,7 @@
   #error "define TOKEN in creds.h"
 #endif
 // LED things
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, PIN, NEO_GRB + NEO_KHZ800);
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, D2, NEO_GRB + NEO_KHZ800);
 
 double brightness = 1.0;  // global brightness off all colors
 uint32_t sync_offset;     // used to sync multiple frames
@@ -122,12 +121,6 @@ byte cos8(int x) {
   return (cos((x/127.5) * M_PI) * 127.5) + 127.5;
 }
 
-// Sets the first to a color, used for startup status
-void startup_pixel(byte r, byte g, byte b) {
-  pixels.setPixelColor(0, pixels.Color(r,g,b));
-  pixels.show();
-}
-
 void setup() {
   Serial.begin(115200);
 
@@ -137,10 +130,8 @@ void setup() {
 
   // LEDS
   pixels.begin();
-  pixels.show();
 
   // WiFi
-  startup_pixel(0,0,255); // blue
   WiFiManager wifiManager;
   //wifiManager.resetSettings();
   wifiManager.setTimeout(180);  // 3min timeout
@@ -154,13 +145,11 @@ void setup() {
     Serial.println("failed to connect and hit timeout");
     delay(3000);
     //reset and try again, or maybe put it to deep sleep
-    startup_pixel(255,255,255); // white
     ESP.reset();
     while(1);
   }
 
   // OTA things
-  startup_pixel(0,255,0); // green
   ArduinoOTA.onStart([]() {
     String type;
     if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -198,7 +187,6 @@ void setup() {
 
   // Blynk things
   Serial.println("Connecting to Blynk...");
-  startup_pixel(255,0,0); // red
   String wifi_ssid = WiFi.SSID();
   String wifi_pass = WiFi.psk();
   char blynk_ssid[wifi_ssid.length()];
@@ -210,9 +198,12 @@ void setup() {
   // Sync wave settings from Blynk App
   blynk_sync_all();
   timer_last_change = millis();
+  // Wait 100ms for sync to finish (prevents displaying a partial sync)
+  while (millis()- timer_last_change < 100) {
+    Blynk.run();
+  }
 
   Serial.println("Starting main loop...");
-  startup_pixel(0,0,0);
 }
 
 void loop() {

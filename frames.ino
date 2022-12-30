@@ -24,8 +24,7 @@ char auth[] = BLYNK_AUTH_TOKEN;
 // LED things
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, D2, NEO_GRB + NEO_KHZ800);
 
-#define TIMEOUT_MS  (4 * 60 * 60 * 1000)  // 4 hours in ms
-unsigned long timer_last_change;
+int power = 0;
 
 struct color {
   double speed;
@@ -37,49 +36,45 @@ struct color {
 // sets red speed
 BLYNK_WRITE(V0) {
   red.speed = (param[0].asDouble() * 256.0) / 500.0;
-  timer_last_change = millis();
 }
 // sets green speed
 BLYNK_WRITE(V1) {
   grn.speed = (param[0].asDouble() * 256.0) / 500.0;
-  timer_last_change = millis();
 }
 // sets blue speed
 BLYNK_WRITE(V2) {
   blu.speed = (param[0].asDouble() * 256.0) / 500.0;
-  timer_last_change = millis();
 }
 
 // sets red wave length
 BLYNK_WRITE(V3) {
   red.waveln = 256.0 / param[0].asInt();
-  timer_last_change = millis();
 }
 // sets green wave length
 BLYNK_WRITE(V4) {
   grn.waveln = 256.0 / param[0].asInt();
-  timer_last_change = millis();
 }
 // sets blue wave length
 BLYNK_WRITE(V5) {
   blu.waveln = 256.0 / param[0].asInt();
-  timer_last_change = millis();
 }
 
 // sets red brightness
 BLYNK_WRITE(V6) {
   red.pwr = param[0].asDouble();
-  timer_last_change = millis();
 }
 // sets green brightness
 BLYNK_WRITE(V7) {
   grn.pwr = param[0].asDouble();
-  timer_last_change = millis();
 }
 // sets blue brightness
 BLYNK_WRITE(V8) {
   blu.pwr = param[0].asDouble();
-  timer_last_change = millis();
+}
+
+// sets on/off
+BLYNK_WRITE(V9) {
+  power = param[0].asInt();
 }
 
 // Syncs all settings with app
@@ -93,16 +88,13 @@ void blynk_sync_all() {
   Blynk.syncVirtual(V6);
   Blynk.syncVirtual(V7);
   Blynk.syncVirtual(V8);
+  Blynk.syncVirtual(V9);
 }
 
-// Sets brightness to 0
+// Turns power off
 void blynk_pwr_off() {
-  Blynk.virtualWrite(V6,0);
-  Blynk.virtualWrite(V7,0);
-  Blynk.virtualWrite(V8,0);
-  red.pwr = 0;
-  grn.pwr = 0;
-  blu.pwr = 0;
+  Blynk.virtualWrite(V9,0);
+  power = 0;
 }
 
 // 8bit sine wave approx
@@ -186,7 +178,7 @@ void setup() {
 
   // Sync wave settings from Blynk App
   blynk_sync_all();
-  timer_last_change = millis();
+  unsigned long timer_last_change = millis();
   // Wait 100ms for sync to finish (prevents displaying a partial sync)
   while (millis()- timer_last_change < 100) {
     Blynk.run();
@@ -199,16 +191,11 @@ void loop() {
   ArduinoOTA.handle();
   uint32_t t = millis();
   for (int i = 0; i < NUM_PIXELS; i++) {
-    uint32_t r = (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
-    uint32_t g = (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));
-    uint32_t b = (blu.pwr * cos8((uint32_t ((blu.speed * t) + (i*blu.waveln))) % 256));
+    uint32_t r = power * (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
+    uint32_t g = power * (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));
+    uint32_t b = power * (blu.pwr * cos8((uint32_t ((blu.speed * t) + (i*blu.waveln))) % 256));
     pixels.setPixelColor(i, pixels.Color(r,g,b));
   }
   pixels.show();
   Blynk.run();
-
-  if (millis() - timer_last_change > TIMEOUT_MS) {
-    blynk_pwr_off();
-    timer_last_change = millis();
-  }
 }

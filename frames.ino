@@ -1,25 +1,28 @@
+// add to .gitignore, holds BLYNK token.
+#include "creds.h"
+#ifndef TOKEN
+  #error "define TOKEN in creds.h"
+#endif
+
+#define BLYNK_TEMPLATE_ID "TMPL7j8V3Ga0"
+#define BLYNK_DEVICE_NAME "Frames"
+#define BLYNK_AUTH_TOKEN TOKEN
+
 #include <Adafruit_NeoPixel.h>
 #include <ArduinoOTA.h>
 #include <BlynkSimpleEsp8266.h>
 #include <math.h>
 #include <WiFiManager.h>
 
-// add to .gitignore, holds BLYNK token.
-#include "creds.h"
-
 // ESP things
 #define NUM_PIXELS 200
 
 // Blynk things
 #define BLYNK_PRINT Serial
-#ifndef TOKEN
-  #error "define TOKEN in creds.h"
-#endif
+char auth[] = BLYNK_AUTH_TOKEN;
+
 // LED things
 Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, D2, NEO_GRB + NEO_KHZ800);
-
-double brightness = 1.0;  // global brightness off all colors
-uint32_t sync_offset;     // used to sync multiple frames
 
 #define TIMEOUT_MS  (4 * 60 * 60 * 1000)  // 4 hours in ms
 unsigned long timer_last_change;
@@ -28,7 +31,7 @@ struct color {
   double speed;
   int waveln;
   int phase;
-  int pwr;
+  double pwr;
 } red, grn, blu;
 
 // sets red speed
@@ -52,42 +55,30 @@ BLYNK_WRITE(V3) {
   red.waveln = 256.0 / param[0].asInt();
   timer_last_change = millis();
 }
-// sets green frequency
+// sets green wave length
 BLYNK_WRITE(V4) {
   grn.waveln = 256.0 / param[0].asInt();
   timer_last_change = millis();
 }
-// sets blue frequency
+// sets blue wave length
 BLYNK_WRITE(V5) {
   blu.waveln = 256.0 / param[0].asInt();
   timer_last_change = millis();
 }
 
-// sets red power
+// sets red brightness
 BLYNK_WRITE(V6) {
-  red.pwr = param[0].asInt();
+  red.pwr = param[0].asDouble();
   timer_last_change = millis();
 }
-// sets green power
+// sets green brightness
 BLYNK_WRITE(V7) {
-  grn.pwr = param[0].asInt();
+  grn.pwr = param[0].asDouble();
   timer_last_change = millis();
 }
-// sets blue power
+// sets blue brightness
 BLYNK_WRITE(V8) {
-  blu.pwr = param[0].asInt();
-  timer_last_change = millis();
-}
-
-// Sync devices
-BLYNK_WRITE(V9) {
-  if (param[0].asInt()) sync_offset = millis();
-  timer_last_change = millis();
-}
-
-// Set brightness
-BLYNK_WRITE(V10) {
-  brightness = param[0].asDouble();
+  blu.pwr = param[0].asDouble();
   timer_last_change = millis();
 }
 
@@ -102,11 +93,9 @@ void blynk_sync_all() {
   Blynk.syncVirtual(V6);
   Blynk.syncVirtual(V7);
   Blynk.syncVirtual(V8);
-  Blynk.syncVirtual(V9);
-  Blynk.syncVirtual(V10);
 }
 
-// Turns of power to all colors
+// Sets brightness to 0
 void blynk_pwr_off() {
   Blynk.virtualWrite(V6,0);
   Blynk.virtualWrite(V7,0);
@@ -193,7 +182,7 @@ void setup() {
   char blynk_pass[wifi_pass.length()];
   wifi_ssid.toCharArray(blynk_ssid, wifi_ssid.length());
   wifi_pass.toCharArray(blynk_pass, wifi_pass.length());
-  Blynk.begin(TOKEN, blynk_ssid, blynk_pass);
+  Blynk.begin(BLYNK_AUTH_TOKEN, blynk_ssid, blynk_pass);
 
   // Sync wave settings from Blynk App
   blynk_sync_all();
@@ -208,11 +197,11 @@ void setup() {
 
 void loop() {
   ArduinoOTA.handle();
-  uint32_t t = millis() - sync_offset;
+  uint32_t t = millis();
   for (int i = 0; i < NUM_PIXELS; i++) {
-    uint32_t r = brightness * (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
-    uint32_t g = brightness * (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));
-    uint32_t b = brightness * (blu.pwr * cos8((uint32_t ((blu.speed * t) + (i*blu.waveln))) % 256));
+    uint32_t r = (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
+    uint32_t g = (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));
+    uint32_t b = (blu.pwr * cos8((uint32_t ((blu.speed * t) + (i*blu.waveln))) % 256));
     pixels.setPixelColor(i, pixels.Color(r,g,b));
   }
   pixels.show();

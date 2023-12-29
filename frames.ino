@@ -1,201 +1,206 @@
-// add to .gitignore, holds BLYNK token.
-#include "creds.h"
-#ifndef TOKEN
-  #error "define TOKEN in creds.h"
-#endif
-
-#define BLYNK_TEMPLATE_ID "TMPL7j8V3Ga0"
-#define BLYNK_DEVICE_NAME "Frames"
-#define BLYNK_AUTH_TOKEN TOKEN
-
 #include <Adafruit_NeoPixel.h>
-#include <ArduinoOTA.h>
-#include <BlynkSimpleEsp8266.h>
 #include <math.h>
-#include <WiFiManager.h>
 
-// ESP things
 #define NUM_PIXELS 200
+#define LED_PIN D6
 
-// Blynk things
-#define BLYNK_PRINT Serial
-char auth[] = BLYNK_AUTH_TOKEN;
+// Knob to Pin mapping
+#define R1 A8
+#define R2 A5
+#define R3 A2
+#define R4 A9
+#define R5 A4
+#define R6 A1
+#define R7 A10
+#define R8 A3
+#define R9 A0
 
-// LED things
-Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, D2, NEO_GRB + NEO_KHZ800);
+// knob min/max bit values
+#define KNOB_MIN_VAL 0
+#define KNOB_MAX_VAL 4095
+#define KNOB_MID_VAL ((KNOB_MAX_VAL - KNOB_MIN_VAL) / 2)
 
-int power = 0;
+#define CHANGE_THRESHOLD 0.05 // only update param if changes by this fraction of max
+#define THRESHOLD_WAVELN 1
+
+#define SPEED_ZERO_RANGE 100 // range around mid knob value that is considered 0
+
+// speed limits in units led/s
+#define SPEED_MIN 0
+#define SPEED_MAX 0.5
+
+// wavelength limits in units leds
+#define WAVELN_MIN 0
+#define WAVELN_MAX 200
+
+#define BRIGHTNESS_MAX 1
 
 struct color {
   double speed;
-  int waveln;
-  int phase;
-  double pwr;
+  double waveln;
+  double brightness;
+  double phase_us;
+  uint32_t speed_changed_us; // saves micros() when speed is changed, 0 if no new change
 } red, grn, blu;
 
-// sets red speed
-BLYNK_WRITE(V0) {
-  red.speed = (param[0].asDouble() * 256.0) / 500.0;
-}
-// sets green speed
-BLYNK_WRITE(V1) {
-  grn.speed = (param[0].asDouble() * 256.0) / 500.0;
-}
-// sets blue speed
-BLYNK_WRITE(V2) {
-  blu.speed = (param[0].asDouble() * 256.0) / 500.0;
+Adafruit_NeoPixel pixels = Adafruit_NeoPixel(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// Map the linear value to an exponential scale
+float mapToExponential(float x, float in_min, float in_max, float out_min, float out_max) {
+  // Map the linear value to a normalized range [0, 1]
+  float normalizedValue = (x - in_min) / (in_max - in_min);
+  // Map the normalized value to the exponential scale
+  float exponentialValue = out_min + (out_max - out_min) * pow(normalizedValue, 2);
+  return exponentialValue;
 }
 
-// sets red wave length
-BLYNK_WRITE(V3) {
-  red.waveln = 256.0 / param[0].asInt();
-}
-// sets green wave length
-BLYNK_WRITE(V4) {
-  grn.waveln = 256.0 / param[0].asInt();
-}
-// sets blue wave length
-BLYNK_WRITE(V5) {
-  blu.waveln = 256.0 / param[0].asInt();
+// invert knob value so value increases when turned clockwise
+double read_knob(int knob_pin) {
+  return KNOB_MAX_VAL - analogRead(knob_pin);
 }
 
-// sets red brightness
-BLYNK_WRITE(V6) {
-  red.pwr = param[0].asDouble();
-}
-// sets green brightness
-BLYNK_WRITE(V7) {
-  grn.pwr = param[0].asDouble();
-}
-// sets blue brightness
-BLYNK_WRITE(V8) {
-  blu.pwr = param[0].asDouble();
+// calculates speed based on a knob position.
+// the sign of the speed indicates direction.
+// returns a value that is between -1.0 and 1.0
+double calc_speed(int knob_pin, double last_speed) {
+  // shift knob value so range is +/- the middle value
+  double val = read_knob(knob_pin) - KNOB_MID_VAL;
+
+  // if val is within SPEED_ZERO_RANGE of 0, consider the value 0
+  if (abs(val) < SPEED_ZERO_RANGE) val = 0;
+
+  // convert to sepad
+  val = (SPEED_MAX *(val / KNOB_MID_VAL));
+
+  // if value hasn't changed by enough, keep speed the same
+  if (abs(val - last_speed) < (SPEED_MAX * CHANGE_THRESHOLD)) return last_speed;
+
+  return val;
 }
 
-// sets on/off
-BLYNK_WRITE(V9) {
-  power = param[0].asInt();
+// calculates wave length based on a knob position.
+// returns a value between 0 and WAVELEN_MAX
+double calc_waveln(int knob_pin, double last_waveln) {
+  double val = WAVELN_MAX * (read_knob(knob_pin) / KNOB_MAX_VAL);
+  if (val == 0) return val; // return 0, no further math needed
+
+  // Map exponentially to get smaller wavelenghts easier
+  val = mapToExponential(val, 0, WAVELN_MAX, 0, WAVELN_MAX);
+
+  // make it easier to have a wavelength of 1
+  if (val < 2) val = 1;
+
+  // if value hasn't changed by enough, keep wavelength the same
+  // if (abs(val - last_waveln) < (WAVELN_MAX * CHANGE_THRESHOLD)) return last_waveln;
+  if (abs(val - last_waveln) < THRESHOLD_WAVELN) return last_waveln;
+
+  return val;
 }
 
-// Syncs all settings with app
-void blynk_sync_all() {
-  Blynk.syncVirtual(V0);
-  Blynk.syncVirtual(V1);
-  Blynk.syncVirtual(V2);
-  Blynk.syncVirtual(V3);
-  Blynk.syncVirtual(V4);
-  Blynk.syncVirtual(V5);
-  Blynk.syncVirtual(V6);
-  Blynk.syncVirtual(V7);
-  Blynk.syncVirtual(V8);
-  Blynk.syncVirtual(V9);
+// calculates the brightness based on a knob position.
+// returns a value between 0.0 and 1.0
+double calc_brightness(int knob_pin, double last_brightness) {
+  double val = read_knob(knob_pin) / KNOB_MAX_VAL;
+  if (val == 0) return val; // return 0, no further math needed
+
+  // Map exponentially to match how our eyes perceive brightness
+  val = mapToExponential(val, 0, BRIGHTNESS_MAX, 0, BRIGHTNESS_MAX);
+
+  // if value hasn't changed by enough, keep brightness the same
+  if (abs(val - last_brightness) < (BRIGHTNESS_MAX * CHANGE_THRESHOLD)) return last_brightness;
+
+  return val;
 }
 
-// Turns power off
-void blynk_pwr_off() {
-  Blynk.virtualWrite(V9,0);
-  power = 0;
+// Updates color params based on knobs
+void update_params() {
+  double new_speed;
+
+  new_speed = calc_speed(R1, red.speed);
+  if (new_speed != red.speed) {
+    red.speed_changed_us = micros();
+  }
+  red.speed = new_speed;
+
+  new_speed = calc_speed(R2, grn.speed);
+  if (new_speed != grn.speed) {
+    grn.speed_changed_us = micros();
+  }
+  grn.speed = new_speed;
+
+  new_speed = calc_speed(R3, blu.speed);
+  if (new_speed != blu.speed) {
+    blu.speed_changed_us = micros();
+  }
+  blu.speed = new_speed;
+
+  red.waveln = calc_waveln(R4, red.waveln);
+  grn.waveln = calc_waveln(R5, grn.waveln);
+  blu.waveln = calc_waveln(R6, blu.waveln);
+
+  red.brightness = calc_brightness(R7, red.brightness);
+  grn.brightness = calc_brightness(R8, grn.brightness);
+  blu.brightness = calc_brightness(R9, blu.brightness);
 }
 
-// 8bit sine wave approx
-byte cos8(int x) {
-  return (cos((x/127.5) * M_PI) * 127.5) + 127.5;
+void debug_print_params() {
+  Serial.println("color speed wave bright phase_us");
+  Serial.printf("red %f %f %f %f\n", red.speed, red.waveln, red.brightness, red.phase_us);
+  Serial.printf("grn %f %f %f %f\n", grn.speed, grn.waveln, grn.brightness, grn.phase_us);
+  Serial.printf("blu %f %f %f %f\n", blu.speed, blu.waveln, blu.brightness, blu.phase_us);
 }
 
 void setup() {
   Serial.begin(115200);
 
-  Serial.println("Booting...");
-  uint32_t ESP_ID = ESP.getChipId();
-  Serial.print("ESP8266 ID:"); Serial.println(ESP_ID);
+  pinMode(R1, INPUT);
+  pinMode(R2, INPUT);
+  pinMode(R3, INPUT);
+  pinMode(R4, INPUT);
+  pinMode(R5, INPUT);
+  pinMode(R6, INPUT);
+  pinMode(R7, INPUT);
+  pinMode(R8, INPUT);
+  pinMode(R9, INPUT);
 
-  // LEDS
+  pinMode(LED_PIN, OUTPUT);
   pixels.begin();
+}
 
-  // WiFi
-  WiFiManager wifiManager;
-  //wifiManager.resetSettings();
-  wifiManager.setTimeout(180);  // 3min timeout
+uint8_t calc_color(color* rgb, int i, uint32_t t) {
+  if (rgb->waveln == 0) return 0;
 
-  // Create unique SSID
-  char buf[16];
-  sprintf(buf, "Frame-AP-%u", ESP_ID);
-
-  // Connect to WiFi, create AP if fails, reset if timeout
-  if(!wifiManager.autoConnect(buf)) {
-    Serial.println("failed to connect and hit timeout");
-    delay(3000);
-    //reset and try again, or maybe put it to deep sleep
-    ESP.reset();
-    while(1);
+  if (rgb->speed_changed_us) {
+    rgb->phase_us += t - rgb->speed_changed_us;
+    rgb->speed_changed_us = 0;
   }
 
-  // OTA things
-  ArduinoOTA.onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH) {
-      type = "sketch";
-    } else { // U_FS
-      type = "filesystem";
-    }
-    // NOTE: if updating FS this would be the place to unmount FS using FS.end()
-    Serial.println("Start updating " + type);
-  });
-  ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
-  });
-  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  });
-  ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
-    } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
-    } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
-    } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
-    } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
-    }
-  });
-  ArduinoOTA.begin();
-  Serial.println("OTA Ready");
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  // time/phase debug
+  //Serial.printf("t: %d\np: %f\n",t,rgb->phase_us);
 
-  // Blynk things
-  Serial.println("Connecting to Blynk...");
-  String wifi_ssid = WiFi.SSID();
-  String wifi_pass = WiFi.psk();
-  char blynk_ssid[wifi_ssid.length()];
-  char blynk_pass[wifi_pass.length()];
-  wifi_ssid.toCharArray(blynk_ssid, wifi_ssid.length());
-  wifi_pass.toCharArray(blynk_pass, wifi_pass.length());
-  Blynk.begin(BLYNK_AUTH_TOKEN, blynk_ssid, blynk_pass);
 
-  // Sync wave settings from Blynk App
-  blynk_sync_all();
-  unsigned long timer_last_change = millis();
-  // Wait 100ms for sync to finish (prevents displaying a partial sync)
-  while (millis()- timer_last_change < 100) {
-    Blynk.run();
-  }
-
-  Serial.println("Starting main loop...");
+  double pos = ((double) i / rgb->waveln) + (rgb->speed * (t - rgb->phase_us) / 1000000.0);
+  pos = 0.5 * (1.0 + sin(2 * PI * pos));
+  pos = pos * 255 * rgb->brightness;
+  return pos;
 }
 
 void loop() {
-  ArduinoOTA.handle();
-  uint32_t t = millis();
+  update_params();
+
+  uint32_t t = micros();
   for (int i = 0; i < NUM_PIXELS; i++) {
-    uint32_t r = power * (red.pwr * cos8((uint32_t ((red.speed * t) + (i*red.waveln))) % 256));
-    uint32_t g = power * (grn.pwr * cos8((uint32_t ((grn.speed * t) + (i*grn.waveln))) % 256));
-    uint32_t b = power * (blu.pwr * cos8((uint32_t ((blu.speed * t) + (i*blu.waveln))) % 256));
+    uint8_t r = calc_color(&red, i, t);
+    uint8_t g = calc_color(&grn, i, t);
+    uint8_t b = calc_color(&blu, i, t);
     pixels.setPixelColor(i, pixels.Color(r,g,b));
   }
   pixels.show();
-  Blynk.run();
+
+  // DEBUG
+  static uint32_t debug_timer = millis();
+  if (millis() - debug_timer > 500) {
+    debug_print_params();
+    debug_timer = millis();
+  }
 }

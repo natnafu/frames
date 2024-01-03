@@ -20,7 +20,7 @@
 #define KNOB_MAX_VAL 4095
 #define KNOB_MID_VAL ((KNOB_MAX_VAL - KNOB_MIN_VAL) / 2)
 
-#define CHANGE_THRESHOLD 0.05 // only update param if changes by this fraction of max
+#define CHANGE_THRESHOLD 0.02 // only update param if changes by this fraction of max
 #define THRESHOLD_WAVELN 1
 
 #define SPEED_ZERO_RANGE 100 // range around mid knob value that is considered 0
@@ -100,7 +100,7 @@ double calc_waveln(int knob_pin, double last_waveln) {
 // calculates the brightness based on a knob position.
 // returns a value between 0.0 and 1.0
 double calc_brightness(int knob_pin, double last_brightness) {
-  double val = read_knob(knob_pin) / KNOB_MAX_VAL;
+  double val = BRIGHTNESS_MAX * read_knob(knob_pin) / KNOB_MAX_VAL;
   if (val == 0) return val; // return 0, no further math needed
 
   // Map exponentially to match how our eyes perceive brightness

@@ -168,8 +168,6 @@ void setup() {
 }
 
 uint8_t calc_color(color* rgb, int i, uint32_t t) {
-  if (rgb->waveln == 0) return 0;
-
   if (rgb->speed_changed_us) {
     rgb->phase_us += t - rgb->speed_changed_us;
     rgb->speed_changed_us = 0;
@@ -178,8 +176,12 @@ uint8_t calc_color(color* rgb, int i, uint32_t t) {
   // time/phase debug
   //Serial.printf("t: %d\np: %f\n",t,rgb->phase_us);
 
-
-  double pos = ((double) i / rgb->waveln) + (rgb->speed * (t - rgb->phase_us) / 1000000.0);
+  double pos;
+  if (rgb->waveln == 0) {
+    pos = rgb->speed * (t - rgb->phase_us) / 1000000.0;
+  } else {
+    pos = ((double) i / rgb->waveln) + (rgb->speed * (t - rgb->phase_us) / 1000000.0);
+  }
   pos = 0.5 * (1.0 + sin(2 * PI * pos));
   pos = pos * 255 * rgb->brightness;
   return pos;
